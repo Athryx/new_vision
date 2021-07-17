@@ -45,9 +45,10 @@ int main(int argc, char **argv) {
 	const bool final_flag = program.get<bool>("-c");
 	const bool parallel_flag = program.get<bool>("-p");
 
+	// TODO: maybe it is ugly to have a boolean and mqtt_client, maybe us an optional?
 	const bool mqtt_flag = program.is_used("-m");
+	// XXX: if mqtt_flag is set, this is guaranteed to be a valid pointer
 	struct mosquitto *mqtt_client = nullptr;
-	int conn_id;
 	if (mqtt_flag) {
 		auto mqtt_host = program.get("-m");
 		auto client_name = std::string {"vision_"} + std::to_string(getpid());
@@ -55,11 +56,13 @@ int main(int argc, char **argv) {
 		mosquitto_lib_init();
 		mqtt_client = mosquitto_new(client_name.c_str(), true, nullptr);
 		if (mqtt_client == nullptr) {
-			std::cout << "couldn't create MQTT client" << std::endl;
+			printf("couldn't create MQTT client\n");
 			exit(2);
 		}
 
-		conn_id = mosquitto_connect(mqtt_client, mqtt_host.c_str(), MQTT_PORT, 60);
+		if (!mosquitto_connect(mqtt_client, mqtt_host.c_str(), MQTT_PORT, 60)) {
+			printf("WARNING: could not connect to mqtt_host %s\n", mqtt_host.c_str());
+		}
 	}
 
 	cv::VideoCapture cap;
@@ -71,5 +74,10 @@ int main(int argc, char **argv) {
 		cap.set(cv::CAP_PROP_FRAME_WIDTH, 320);
 		cap.set(cv::CAP_PROP_FRAME_HEIGHT, 240);
 		cap.set(cv::CAP_PROP_FPS, 120);
+	}
+
+	if (mqtt_flag) {
+		mosquitto_destroy(mqtt_client);
+		mosquitto_lib_cleanup();
 	}
 }

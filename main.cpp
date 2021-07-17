@@ -31,7 +31,11 @@ int main(int argc, char **argv) {
 		.default_value(std::string {MQTT_HOST});
 
 	program.add_argument("file")
-		.help("file name to process, if no file name is given, use camera 0");
+		.help("file name to process, if no file name is given, use camera 0")
+		.default_value(std::optional<std::string> {})
+		.action([] (const std::string& str) -> std::optional<std::string> {
+				return str;
+		});
 
 	try {
 		program.parse_args (argc, argv);
@@ -50,7 +54,7 @@ int main(int argc, char **argv) {
 	// XXX: if mqtt_flag is set, this is guaranteed to be a valid pointer
 	struct mosquitto *mqtt_client = nullptr;
 	if (mqtt_flag) {
-		auto mqtt_host = program.get("-m");
+		auto host_name = program.get("-m");
 		auto client_name = std::string {"vision_"} + std::to_string(getpid());
 
 		mosquitto_lib_init();
@@ -60,13 +64,14 @@ int main(int argc, char **argv) {
 			exit(2);
 		}
 
-		if (!mosquitto_connect(mqtt_client, mqtt_host.c_str(), MQTT_PORT, 60)) {
-			printf("WARNING: could not connect to mqtt_host %s\n", mqtt_host.c_str());
+		// mosquitto_connect returns a non zero value on failure
+		if (mosquitto_connect(mqtt_client, host_name.c_str(), MQTT_PORT, 60)) {
+			printf("WARNING: could not connect to mqtt_host %s\n", host_name.c_str());
 		}
 	}
 
 	cv::VideoCapture cap;
-	auto file_name = program.present<std::string>("file");
+	auto file_name = program.get<std::optional<std::string>>("file");
 	if (file_name.has_value()) {
 		cap.open(*file_name);
 	} else {

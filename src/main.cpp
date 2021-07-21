@@ -10,9 +10,6 @@
 #define MQTT_HOST "roborio-2358-frc.local"
 #define MQTT_PORT 1183
 
-// TODO
-#define TEMPLATE_FILE ""
-
 int main(int argc, char **argv) {
 	argparse::ArgumentParser program("vision", "0.1.0");
 	
@@ -25,12 +22,15 @@ int main(int argc, char **argv) {
 		.help("publish distance and angle to mqtt broker")
 		.default_value(std::string {MQTT_HOST});
 
-	program.add_argument("file")
-		.help("file name to process, if no file name is given, use camera 0")
+	program.add_argument("-c")
+		.help("camera device file name to process, if no file name is given, use camera 0")
 		.default_value(std::optional<std::string> {})
 		.action([] (const std::string& str) -> std::optional<std::string> {
 				return str;
 		});
+
+	program.add_argument("template")
+		.help("template image file to process");
 
 	try {
 		program.parse_args (argc, argv);
@@ -59,12 +59,12 @@ int main(int argc, char **argv) {
 
 		// mosquitto_connect returns a non zero value on failure
 		if (mosquitto_connect(mqtt_client, host_name.c_str(), MQTT_PORT, 60)) {
-			printf("WARNING: could not connect to mqtt_host %s\n", host_name.c_str());
+			printf("warning: could not connect to mqtt_host %s\n", host_name.c_str());
 		}
 	}
 
 	cv::VideoCapture cap;
-	auto file_name = program.get<std::optional<std::string>>("file");
+	auto file_name = program.get<std::optional<std::string>>("-c");
 	if (file_name.has_value()) {
 		cap.open(*file_name);
 	} else {
@@ -76,9 +76,10 @@ int main(int argc, char **argv) {
 
 	Vision vis(display_flag);
 
-	auto template_img = cv::imread(TEMPLATE_FILE, -1);
+	auto template_file = program.get("template");
+	auto template_img = cv::imread(template_file, -1);
 	if (template_img.empty()) {
-		printf("template file '%s' empty or missing\n", TEMPLATE_FILE);
+		printf("template file '%s' empty or missing\n", template_file.c_str());
 		exit(3);
 	}
 	vis.process_template(template_img);

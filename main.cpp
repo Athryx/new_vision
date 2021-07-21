@@ -1,5 +1,7 @@
 #include "types.h"
 #include "argparse.hpp"
+#include "vision.h"
+#include "util.h"
 #include <opencv2/opencv.hpp>
 #include <mosquitto.h>
 #include <stdio.h>
@@ -8,21 +10,14 @@
 #define MQTT_HOST "roborio-2358-frc.local"
 #define MQTT_PORT 1183
 
+// TODO
+#define TEMPLATE_FILE ""
+
 int main(int argc, char **argv) {
-	argparse::ArgumentParser program("vision");
+	argparse::ArgumentParser program("vision", "0.1.0");
 	
 	program.add_argument("-d")
 		.help("display processing frames")
-		.default_value(false)
-		.implicit_value(true);
-
-	program.add_argument("-c")
-		.help("display final processed frame")
-		.default_value(false)
-		.implicit_value(true);
-
-	program.add_argument("-p")
-		.help("process frames in parrallel")
 		.default_value(false)
 		.implicit_value(true);
 
@@ -46,10 +41,8 @@ int main(int argc, char **argv) {
 	}
 
 	const bool display_flag = program.get<bool>("-d");
-	const bool final_flag = program.get<bool>("-c");
-	const bool parallel_flag = program.get<bool>("-p");
 
-	// TODO: maybe it is ugly to have a boolean and mqtt_client, maybe us an optional?
+	// TODO: maybe it is ugly to have a boolean and mqtt_client, maybe use an optional?
 	const bool mqtt_flag = program.is_used("-m");
 	// XXX: if mqtt_flag is set, this is guaranteed to be a valid pointer
 	struct mosquitto *mqtt_client = nullptr;
@@ -79,6 +72,46 @@ int main(int argc, char **argv) {
 		cap.set(cv::CAP_PROP_FRAME_WIDTH, 320);
 		cap.set(cv::CAP_PROP_FRAME_HEIGHT, 240);
 		cap.set(cv::CAP_PROP_FPS, 120);
+	}
+
+	Vision vis(display_flag);
+
+	auto template_img = cv::imread(TEMPLATE_FILE, -1);
+	if (template_img.empty()) {
+		printf("template file '%s' empty or missing\n", TEMPLATE_FILE);
+		exit(3);
+	}
+	vis.process_template(template_img);
+
+	const int msg_len = 32;
+	char msg[msg_len];
+	memset(msg, 0, msg_len);
+
+	for (;;) {
+		cv::Mat frame;
+		cap >> frame;
+		if (frame.empty()) break;
+
+		auto target = time<std::optional<Target>>("frame", [&]() {
+			return vis.process(frame);
+		});
+
+		if (mqtt_flag) {
+			if (target.has_value()) {
+				snprintf(msg, msg_len, "1 %6.2f %6.2f", target->distance, target->angle);
+			}
+			else {
+				snprintf(msg, msg_len, "0 %6.2f %6.2f", 0.0f, 0.0f);
+			}
+
+			mosquitto_publish(mqtt_client, 0, "PI/CV/SHOOT/DATA", strlen(msg), msg, 0, false);
+			int ret = mosquitto_loop(mqtt_client, 0, 1);
+			printf("message sent: %s\n", msg);
+			if (ret) {
+				printf("connection lost, reconnecting...\n");
+				mosquitto_reconnect(mqtt_client);
+			}
+		}
 	}
 
 	if (mqtt_flag) {

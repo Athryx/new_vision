@@ -74,17 +74,15 @@ int main(int argc, char **argv) {
 		cap.set(cv::CAP_PROP_FPS, 120);
 	}
 
-	Vision vis(display_flag);
-
 	auto template_file = program.get("template");
 	auto template_img = cv::imread(template_file, -1);
 	if (template_img.empty()) {
 		printf("template file '%s' empty or missing\n", template_file.c_str());
 		exit(3);
 	}
-	vis.process_template(template_img);
+	Vision vis(template_img, display_flag);
 
-	const int msg_len = 32;
+	const usize msg_len = 32;
 	char msg[msg_len];
 	memset(msg, 0, msg_len);
 

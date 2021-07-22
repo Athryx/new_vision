@@ -17,11 +17,11 @@ class Vision {
 		~Vision();
 
 		void process_template(cv::Mat img);
-		std::optional<Target> process(cv::Mat img);
+		std::optional<Target> process(cv::Mat img) const;
 
 	private:
-		void show(const std::string &name, cv::Mat &img);
-		void show_wait(const std::string &name, cv::Mat &img);
+		void show(const std::string& name, cv::Mat& img) const;
+		void show_wait(const std::string& name, cv::Mat& img) const;
 
 		bool display;
 

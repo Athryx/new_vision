@@ -27,7 +27,7 @@ void Vision::process_template(cv::Mat img) {
 	// find largest contour
 	usize index = 0;
 	double max_area = 0;
-	for (usize i = 0; i < contours.size(); i++) {
+	for (usize i = 0; i < contours.size(); i ++) {
 		double area = cv::contourArea(contours[i]);
 		if (area > max_area) {
 			max_area = area;
@@ -39,34 +39,34 @@ void Vision::process_template(cv::Mat img) {
 	template_area_frac = max_area / cv::boundingRect(template_contour).area();
 }
 
-std::optional<Target> Vision::process(cv::Mat img) {
+std::optional<Target> Vision::process(cv::Mat img) const {
 	cv::Size size(img.rows, img.cols);
 
 	show("Input", img);
 
 	// TODO: figure out type of BGR mat
 	cv::Mat img_hsv(size, img.type());
-	time("HSV conversion", [&]() { cv::cvtColor(img, img_hsv, cv::COLOR_BGR2HSV, 8); });
+	time("HSV conversion", [&] () { cv::cvtColor(img, img_hsv, cv::COLOR_BGR2HSV, 8); });
 
 	cv::Mat img_thresh(size, CV_8U);
-	time("Threshold", [&]() { cv::inRange(img_hsv, thresh_min, thresh_max, img_thresh); });
+	time("Threshold", [&] () { cv::inRange(img_hsv, thresh_min, thresh_max, img_thresh); });
 	show("Threshold", img_thresh);
 
 	cv::Mat img_morph(size, CV_8U);
 	// TODO: pass kernel into morphologyEx instead of plain cv::Mat()
-	time("Morphology", [&]() { cv::morphologyEx(img_thresh, img_morph, cv::MORPH_OPEN, cv::Mat()); });
+	time("Morphology", [&] () { cv::morphologyEx(img_thresh, img_morph, cv::MORPH_OPEN, cv::Mat()); });
 	show("Morphology", img_morph);
 
 	// TODO: reserve eneough space in vector to prevent reallocations
 	std::vector<std::vector<cv::Point>> contours;
-	time("Contours", [&]() { cv::findContours(img_morph, contours, cv::RETR_LIST, cv::CHAIN_APPROX_SIMPLE); });
+	time("Contours", [&] () { cv::findContours(img_morph, contours, cv::RETR_LIST, cv::CHAIN_APPROX_SIMPLE); });
 
 	usize match_index = 0;
 	double best_match = INFINITY;
 	double best_area = 0.0;
 
-	time("Contour Matching", [&]() {
-		for (usize i = 0; i < contours.size(); i++) {
+	time("Contour Matching", [&] () {
+		for (usize i = 0; i < contours.size(); i ++) {
 			auto contour = contours[i];
 			double match = cv::matchShapes(template_contour, contour, cv::CONTOURS_MATCH_I3, 0.0);
 
@@ -81,8 +81,25 @@ std::optional<Target> Vision::process(cv::Mat img) {
 		}
 	});
 
-	// TODO: maybe display matched contour and bounding box
-	if (best_match == INFINITY) return {};
+	char text[32];
+	int font_face = cv::FONT_HERSHEY_SIMPLEX;
+	double font_scale = 0.5;
+	cv::Point text_point(40, 40);
+
+	if (best_match == INFINITY) {
+		if (display) {
+			auto img_show = img.clone();
+
+			cv::putText(img_show, "match: none", text_point, font_face, font_scale, cv::Scalar(0, 0, 255));
+			text_point.y += 15;
+			cv::putText(img_show, "distance: unknown", text_point, font_face, font_scale, cv::Scalar(0, 0, 255));
+			text_point.y += 15;
+			cv::putText(img_show, "angle: unknown", text_point, font_face, font_scale, cv::Scalar(0, 0, 255));
+
+			cv::imshow("Contours", img_show);
+		}
+		return {};
+	}
 
 	auto rect = cv::boundingRect(contours[match_index]);
 	Target out;
@@ -90,19 +107,35 @@ std::optional<Target> Vision::process(cv::Mat img) {
 	auto xpos = rect.x + rect.width / 2;
 	out.angle = atan((xpos - 320) / 530.47) * (180.0 / M_PI) + 16;
 
+	if (display) {
+		auto img_show = img.clone();
+
+		cv::drawContours(img_show, contours, match_index, cv::Scalar(0, 0, 255));
+		cv::rectangle(img_show, rect, cv::Scalar(0, 255, 0));
+
+		snprintf(text, 32, "match: %6.2f", best_match);
+		cv::putText(img_show, text, text_point, font_face, font_scale, cv::Scalar(0, 0, 255));
+		text_point.y += 15;
+		snprintf(text, 32, "distance: %6.2f", out.distance);
+		cv::putText(img_show, text, text_point, font_face, font_scale, cv::Scalar(0, 0, 255));
+		text_point.y += 15;
+		snprintf(text, 32, "angle: %6.2f", out.angle);
+		cv::putText(img_show, text, text_point, font_face, font_scale, cv::Scalar(0, 0, 255));
+
+		cv::imshow("Contours", img_show);
+	}
+
 	return out;
 }
 
-void Vision::show(const std::string &name, cv::Mat &img) {
+void Vision::show(const std::string& name, cv::Mat& img) const {
 	if (display) {
-		cv::namedWindow(name, cv::WINDOW_AUTOSIZE);
 		cv::imshow(name, img);
 	}
 }
 
-void Vision::show_wait(const std::string &name, cv::Mat &img) {
+void Vision::show_wait(const std::string& name, cv::Mat& img) const {
 	if (display) {
-		cv::namedWindow(name, cv::WINDOW_AUTOSIZE);
 		cv::imshow(name, img);
 		cv::waitKey();
 	}

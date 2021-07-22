@@ -6,6 +6,9 @@
 #include <mosquitto.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <stdlib.h>
+#include <algorithm>
+#include <iostream>
 
 #define MQTT_HOST "roborio-2358-frc.local"
 #define MQTT_PORT 1183
@@ -13,7 +16,7 @@
 int main(int argc, char **argv) {
 	argparse::ArgumentParser program("vision", "0.1.0");
 	
-	program.add_argument("-d")
+	program.add_argument("-d", "--display")
 		.help("display processing frames")
 		.default_value(false)
 		.implicit_value(true);
@@ -22,7 +25,28 @@ int main(int argc, char **argv) {
 		.help("publish distance and angle to mqtt broker")
 		.default_value(std::string {MQTT_HOST});
 
-	program.add_argument("-c")
+	program.add_argument("-f", "--fps")
+		.help("maximum frames per second")
+		.default_value(120)
+		.action([] (const std::string& str) {
+				return std::atoi(str.c_str());
+		});
+
+	program.add_argument("-w", "--width")
+		.help("camera pixel width")
+		.default_value(320)
+		.action([] (const std::string& str) {
+				return std::atoi(str.c_str());
+		});
+
+	program.add_argument("-h", "--height")
+		.help("camera pixel width")
+		.default_value(240)
+		.action([] (const std::string& str) {
+				return std::atoi(str.c_str());
+		});
+
+	program.add_argument("-c", "--camera")
 		.help("camera device file name to process, if no file name is given, use camera 0")
 		.default_value(std::optional<std::string> {})
 		.action([] (const std::string& str) -> std::optional<std::string> {
@@ -41,6 +65,9 @@ int main(int argc, char **argv) {
 	}
 
 	const bool display_flag = program.get<bool>("-d");
+	const long max_fps = program.get<int>("-f");
+	const int cam_width = program.get<int>("-w");
+	const int cam_height = program.get<int>("-h");
 
 	// TODO: maybe it is ugly to have a boolean and mqtt_client, maybe use an optional?
 	const bool mqtt_flag = program.is_used("-m");
@@ -54,7 +81,7 @@ int main(int argc, char **argv) {
 		mqtt_client = mosquitto_new(client_name.c_str(), true, nullptr);
 		if (mqtt_client == nullptr) {
 			printf("couldn't create MQTT client\n");
-			exit(2);
+			exit(1);
 		}
 
 		// mosquitto_connect returns a non zero value on failure
@@ -66,19 +93,27 @@ int main(int argc, char **argv) {
 	cv::VideoCapture cap;
 	auto file_name = program.get<std::optional<std::string>>("-c");
 	if (file_name.has_value()) {
-		cap.open(*file_name);
+		cap.open(*file_name, cv::CAP_V4L2);
 	} else {
-		cap.open(0);
-		cap.set(cv::CAP_PROP_FRAME_WIDTH, 320);
-		cap.set(cv::CAP_PROP_FRAME_HEIGHT, 240);
-		cap.set(cv::CAP_PROP_FPS, 120);
+		// cv::CAP_V4L2 is needed because by default it might use gstreamer, and because of a bug in opencv, this causes open to fail
+		// if this is ever run not on linux, this will likely need to be changed
+		cap.open(0, cv::CAP_V4L2);
+		cap.set(cv::CAP_PROP_FRAME_WIDTH, cam_width);
+		cap.set(cv::CAP_PROP_FRAME_HEIGHT, cam_height);
+		cap.set(cv::CAP_PROP_FPS, max_fps);
 	}
+
+	if (!cap.isOpened()) {
+		printf("error: could not open camera\n");
+		exit(1);
+	}
+
 
 	auto template_file = program.get("template");
 	auto template_img = cv::imread(template_file, -1);
 	if (template_img.empty()) {
 		printf("template file '%s' empty or missing\n", template_file.c_str());
-		exit(3);
+		exit(1);
 	}
 	Vision vis(template_img, display_flag);
 
@@ -86,14 +121,26 @@ int main(int argc, char **argv) {
 	char msg[msg_len];
 	memset(msg, 0, msg_len);
 
+	long total_time = 0;
+	long frames = 0;
+
 	for (;;) {
 		cv::Mat frame;
 		cap >> frame;
 		if (frame.empty()) break;
 
-		auto target = time<std::optional<Target>>("frame", [&]() {
+		long elapsed_time;
+		auto target = time<std::optional<Target>>("frame", [&] () {
 			return vis.process(frame);
-		});
+		}, &elapsed_time);
+
+		total_time += elapsed_time;
+		frames ++;
+
+		printf("instantaneous fps: %ld\n", std::min(1000000 / elapsed_time, max_fps));
+		printf("average fps: %ld\n", std::min(1000000 * frames / total_time, max_fps));
+
+		printf("\n");
 
 		if (mqtt_flag) {
 			if (target.has_value()) {
@@ -111,6 +158,9 @@ int main(int argc, char **argv) {
 				mosquitto_reconnect(mqtt_client);
 			}
 		}
+
+		// this is necessary to poll events for opencv highgui
+		if (display_flag) cv::pollKey();
 	}
 
 	if (mqtt_flag) {

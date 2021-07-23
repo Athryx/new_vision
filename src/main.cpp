@@ -40,7 +40,7 @@ int main(int argc, char **argv) {
 		});
 
 	program.add_argument("-h", "--height")
-		.help("camera pixel width")
+		.help("camera pixel height")
 		.default_value(240)
 		.action([] (const std::string& str) {
 				return std::atoi(str.c_str());

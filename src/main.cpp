@@ -46,6 +46,13 @@ int main(int argc, char **argv) {
 				return std::atoi(str.c_str());
 		});
 
+	program.add_argument("-t", "--threads")
+		.help("amount of threads to use for parallel processing")
+		.default_value(4)
+		.action([] (const std::string& str) {
+				return std::atoi(str.c_str());
+		});
+
 	program.add_argument("-c", "--camera")
 		.help("camera device file name to process, if no file name is given, use camera 0")
 		.default_value(std::optional<std::string> {})
@@ -68,6 +75,12 @@ int main(int argc, char **argv) {
 	const long max_fps = program.get<int>("-f");
 	const int cam_width = program.get<int>("-w");
 	const int cam_height = program.get<int>("-h");
+	const int threads = program.get<int>("-t");
+
+	if (threads < 1) {
+		printf("error: can't use less than 1 thread");
+		exit(1);
+	}
 
 	// TODO: maybe it is ugly to have a boolean and mqtt_client, maybe use an optional?
 	const bool mqtt_flag = program.is_used("-m");
@@ -115,7 +128,7 @@ int main(int argc, char **argv) {
 		printf("template file '%s' empty or missing\n", template_file.c_str());
 		exit(1);
 	}
-	Vision vis(template_img, display_flag);
+	Vision vis(template_img, threads, display_flag);
 
 	const usize msg_len = 32;
 	char msg[msg_len];

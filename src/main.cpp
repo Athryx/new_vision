@@ -11,7 +11,6 @@
 #include <iostream>
 
 #define MQTT_HOST "roborio-2358-frc.local"
-#define MQTT_PORT 1183
 
 int main(int argc, char **argv) {
 	argparse::ArgumentParser program("vision", "0.1.0");
@@ -25,39 +24,46 @@ int main(int argc, char **argv) {
 		.help("publish distance and angle to mqtt broker")
 		.default_value(std::string {MQTT_HOST});
 
+	program.add_argument("-p", "--port")
+		.help("use specified port to send mqtt data")
+		.default_value(1883)
+		.action([] (const std::string& str) {
+			return std::atoi(str.c_str());
+		});
+
 	program.add_argument("-f", "--fps")
 		.help("maximum frames per second")
 		.default_value(120)
 		.action([] (const std::string& str) {
-				return std::atoi(str.c_str());
+			return std::atoi(str.c_str());
 		});
 
 	program.add_argument("-w", "--width")
 		.help("camera pixel width")
 		.default_value(320)
 		.action([] (const std::string& str) {
-				return std::atoi(str.c_str());
+			return std::atoi(str.c_str());
 		});
 
 	program.add_argument("-h", "--height")
 		.help("camera pixel height")
 		.default_value(240)
 		.action([] (const std::string& str) {
-				return std::atoi(str.c_str());
+			return std::atoi(str.c_str());
 		});
 
 	program.add_argument("-t", "--threads")
 		.help("amount of threads to use for parallel processing")
 		.default_value(4)
 		.action([] (const std::string& str) {
-				return std::atoi(str.c_str());
+			return std::atoi(str.c_str());
 		});
 
 	program.add_argument("-c", "--camera")
 		.help("camera device file name to process, if no file name is given, use camera 0")
 		.default_value(std::optional<std::string> {})
 		.action([] (const std::string& str) -> std::optional<std::string> {
-				return str;
+			return str;
 		});
 
 	program.add_argument("template")
@@ -81,6 +87,7 @@ int main(int argc, char **argv) {
 		printf("error: can't use less than 1 thread");
 		exit(1);
 	}
+	cv::setNumThreads(threads);
 
 	// TODO: maybe it is ugly to have a boolean and mqtt_client, maybe use an optional?
 	const bool mqtt_flag = program.is_used("-m");
@@ -88,6 +95,7 @@ int main(int argc, char **argv) {
 	struct mosquitto *mqtt_client = nullptr;
 	if (mqtt_flag) {
 		auto host_name = program.get("-m");
+		const int mqtt_port = program.get<int>("-p");
 		auto client_name = std::string {"vision_"} + std::to_string(getpid());
 
 		mosquitto_lib_init();
@@ -98,7 +106,7 @@ int main(int argc, char **argv) {
 		}
 
 		// mosquitto_connect returns a non zero value on failure
-		if (mosquitto_connect(mqtt_client, host_name.c_str(), MQTT_PORT, 60)) {
+		if (mosquitto_connect(mqtt_client, host_name.c_str(), mqtt_port, 60)) {
 			printf("warning: could not connect to mqtt_host %s\n", host_name.c_str());
 		}
 	}

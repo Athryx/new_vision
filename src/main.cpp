@@ -10,8 +10,6 @@
 #include <algorithm>
 #include <iostream>
 
-#define MQTT_HOST "roborio-2358-frc.local"
-
 int main(int argc, char **argv) {
 	argparse::ArgumentParser program("vision", "0.1.0");
 	
@@ -22,7 +20,7 @@ int main(int argc, char **argv) {
 
 	program.add_argument("-m")
 		.help("publish distance and angle to mqtt broker")
-		.default_value(std::string {MQTT_HOST});
+		.default_value(std::string {"localhost"});
 
 	program.add_argument("-p", "--port")
 		.help("use specified port to send mqtt data")

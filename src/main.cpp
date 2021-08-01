@@ -29,6 +29,10 @@ int main(int argc, char **argv) {
 			return std::atoi(str.c_str());
 		});
 
+	program.add_argument("-t", "--topic")
+		.help("mqtt topic to publish data to")
+		.default_value(std::string {"PI/CV/SHOOT/DATA"});
+
 	program.add_argument("-f", "--fps")
 		.help("maximum frames per second")
 		.default_value(120)
@@ -89,6 +93,7 @@ int main(int argc, char **argv) {
 
 	// TODO: maybe it is ugly to have a boolean and mqtt_client, maybe use an optional?
 	const bool mqtt_flag = program.is_used("-m");
+	const auto mqtt_topic = program.get("-t");
 	// XXX: if mqtt_flag is set, this is guaranteed to be a valid pointer
 	struct mosquitto *mqtt_client = nullptr;
 	if (mqtt_flag) {
@@ -169,7 +174,7 @@ int main(int argc, char **argv) {
 				snprintf(msg, msg_len, "0 %6.2f %6.2f", 0.0f, 0.0f);
 			}
 
-			mosquitto_publish(mqtt_client, 0, "PI/CV/SHOOT/DATA", strlen(msg), msg, 0, false);
+			mosquitto_publish(mqtt_client, 0, mqtt_topic.c_str(), strlen(msg), msg, 0, false);
 			int ret = mosquitto_loop(mqtt_client, 0, 1);
 			printf("message sent: %s\n", msg);
 			if (ret) {
